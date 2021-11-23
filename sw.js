@@ -27,24 +27,34 @@ self.addEventListener('install', (e) => {
     })());
   });
 
-  self.addEventListener('fetch', (e) => {
-    e.respondWith((async () => {
-      const r = await caches.match(e.request);
-      console.log(`[Service Worker] Fetching resource: ${e.request.url}`);
-      if (r) { return r; }
-      const response = await fetch(e.request);
-      const cache = await caches.open(cacheName);
-      console.log(`[Service Worker] Caching new resource: ${e.request.url}`);
-      cache.put(e.request, response.clone());
-      return response;
-    })());
-  });
+self.addEventListener('fetch', (e) => {
+  //cache-only
+  if(contentToCache.some(file=>e.request.url.endsWith(file.substr(2)) && !e.request.url.endsWith("app.js"))){
+      console.log('[Service Worker] Loading from cache: '+e.request.url);
+      e.respondWith(caches.match(e.request));
+  //Network + mise en cache, ou cache, ou réponse par défaut
+  }else{
+    e.respondWith(fetch(e.request)).then(response => {
+      return caches.open(CACHE_NAME).then(cache => {
+        console.log('[Service Worker] Fetching from network and caching ressource: '+e.request.url);
+        cache.put(e.request, response.clone());
+        return response;
+      });
+    })
+    .catch(function() {
+      return caches.match(e.request).then(r=>{
+        console.log('[Service Worker] Looking for ressource in cache: '+e.request.url);
+        return r; // || newResponse(JSON.stringify({error: 1}), {headers: {'ContentType':'application'}});
+      })
+    })
+  }
+});
 
-  self.addEventListener('activate', (e) => {
-    e.waitUntil(caches.keys().then((keyList) => {
-      return Promise.all(keyList.map((key) => {
-        if (key === cacheName) { return; }
-        return caches.delete(key);
-      }))
-    }));
-  });
+self.addEventListener('activate', (e) => {
+  e.waitUntil(caches.keys().then((keyList) => {
+    return Promise.all(keyList.map((key) => {
+      if (key === cacheName) { return; }
+      return caches.delete(key);
+    }))
+  }));
+});
